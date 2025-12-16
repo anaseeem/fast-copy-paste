@@ -1,129 +1,133 @@
-import { useState } from "react";
-import logo from "@/assets/images/logo-universal.png";
-import "@/index.css";
-import { Greet } from "../wailsjs/go/main/App";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import "@/index.css";
+import { useEffect, useId, useState } from "react";
+import { CopyPaste } from "../wailsjs/go/main/App";
+import MyProgress from "./components/myApp/MyProgress";
+import { ThemeProvider } from "./components/providers/ThemeProvider";
+import { cn } from "./lib/utils";
+import * as runtime from "../wailsjs/runtime";
+type InputCompProps = {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (v: string) => void;
+};
+const InputComp: React.FC<InputCompProps> = ({
+  label,
+  name,
+  value,
+  onChange,
+}) => {
+  const id = useId();
+  const elmId = `${name}${id}`;
+  return (
+    <div className="flex flex-col gap-y-1 shadow-md bg-slate-200 rounded-md p-2">
+      <Label htmlFor={elmId}>{label}</Label>
+      <Input
+        className={cn("bg-white")}
+        type="text"
+        name={name}
+        id={elmId}
+        value={value}
+        onChange={(evt) => onChange(evt.target.value)}
+      />
+    </div>
+  );
+};
 
 function App() {
-  const [resultText, setResultText] = useState("Enter your name to get started!");
-  const [name, setName] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [source, setSource] = useState("");
+  const [dest, setDest] = useState("");
+  const [progress, setProgress] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [output, setOutput] = useState("");
 
-  async function greet() {
-    if (!name.trim()) {
-      setResultText("Please enter a name first! 🙏");
-      return;
-    }
+  useEffect(() => {
+    // Listener for progress (0-100)
+    runtime.EventsOn("copyProgress", (value: number) => {
+      setProgress(value);
+    });
 
-    setIsLoading(true);
+    // Listener for final status (success/error message)
+    runtime.EventsOn("copyStatus", (status: string) => {
+      setOutput(status);
+      setSubmitting(false); // End the loading state when status received
+    });
+
+    // Clean up listeners when the component unmounts
+    return () => {
+      runtime.EventsOff("copyProgress");
+      runtime.EventsOff("copyStatus");
+    };
+  }, []);
+
+  const onSubmit = async (evt: React.FormEvent<HTMLFormElement>) => {
+    evt.preventDefault();
+    setSubmitting(true);
     try {
-      const result = await Greet(name);
-      setResultText(result);
-    } catch (error) {
-      setResultText("Oops! Something went wrong. 😕");
-    } finally {
-      setIsLoading(false);
-    }
-  }
+      const result = await CopyPaste(source, dest);
+      console.log({ result });
+      setOutput(result);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      greet();
+      // now I have to run
+      // robocopy node_modules node_modules4 /MIR /MT | Out-Null
+    } catch (error) {
+      console.error(error);
+    } finally {
+      // setSubmitting(false);
+      console.log("finally called");
     }
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center p-8">
-      <div className="w-full max-w-2xl space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <img
-            src={logo}
-            className="w-32 h-32 object-contain mx-auto drop-shadow-lg hover:scale-105 transition-transform"
-            alt="Wails Logo"
-          />
-          <div className="space-y-2">
-            <h1 className="text-4xl font-bold tracking-tight text-slate-900">
-              Welcome to Wails!
-            </h1>
-            <p className="text-slate-600 text-lg">
-              React + TypeScript + Vite + Tailwind CSS v4 + shadcn/ui
-            </p>
-          </div>
-        </div>
+    <ThemeProvider
+      defaultTheme="light"
+      storageKey="fast-copy-paste-theme">
+      <div className="h-full flex items-center justify-center ">
+        <Card className="w-4/5">
+          <CardContent>
+            <form
+              action="#"
+              onSubmit={onSubmit}>
+              <div className="flex flex-col gap-y-2">
+                <div className="flex flex-col gap-y-2">
+                  <InputComp
+                    label="Source Path"
+                    name="source"
+                    value={source}
+                    onChange={setSource}
+                  />
+                  <InputComp
+                    label="Destination Paths"
+                    name="destination"
+                    value={dest}
+                    onChange={setDest}
+                  />
+                </div>
 
-        {/* Main Card */}
-        <Card className="shadow-xl border-slate-200">
-          <CardHeader>
-            <CardTitle className="text-2xl">Greet Function Demo</CardTitle>
-            <CardDescription>
-              Try out the Go backend integration by entering your name below
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name" className="text-base">
-                Your Name
-              </Label>
-              <Input
-                id="name"
-                placeholder="Enter your name..."
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyPress={handleKeyPress}
-                disabled={isLoading}
-                className="text-base h-11"
-              />
-            </div>
-            <div className="p-6 bg-slate-50 rounded-lg border border-slate-200 min-h-20 flex items-center justify-center">
-              <p className="text-center font-medium text-slate-900 text-lg">
-                {resultText}
-              </p>
-            </div>
+                <div>
+                  <Button
+                    type="submit"
+                    disabled={submitting}>
+                    {submitting ? "Submitting" : "Start Copy"}
+                  </Button>
+                </div>
+              </div>
+            </form>
           </CardContent>
-          <CardFooter className="flex gap-3">
-            <Button
-              onClick={greet}
-              disabled={isLoading}
-              className="flex-1 h-11 text-base"
-            >
-              {isLoading ? "Greeting..." : "Greet Me! 👋"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setName("");
-                setResultText("Enter your name to get started!");
-              }}
-              disabled={isLoading}
-              className="h-11"
-            >
-              Clear
-            </Button>
-          </CardFooter>
+          <CardContent>
+            <p className="h-8">{output ? output : "No result"}</p>
+          </CardContent>
+          <CardContent>
+            <Label>Progress</Label>
+            <MyProgress progress={progress} />
+          </CardContent>
         </Card>
-
-        {/* Footer */}
-        <div className="text-center space-y-2">
-          <p className="text-sm text-slate-600">
-            Built with ❤️ using Wails v2.11.0
-          </p>
-          <p className="text-xs text-slate-500">
-            Go backend • React frontend • Native desktop app
-          </p>
-        </div>
       </div>
-    </div>
+    </ThemeProvider>
   );
 }
 
